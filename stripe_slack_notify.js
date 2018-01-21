@@ -71,9 +71,11 @@ function processEvent(event, callback) {
 function formatMessage(event) {
     const url = `${stripeUrl}/${event.id}`;
     const result =
-`type: ${event.type},
+`*[ ${event.type} ]*,
+description: ${event.data.object.description}
 failure_code: ${event.data.object.failure_code},
 failure_message: ${event.data.object.failure_message},
+source_mid: ${event.data.object.metadata.order_mid},
 url: ${url}`;
     return result;
 }
