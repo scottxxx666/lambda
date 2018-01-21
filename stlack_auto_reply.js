@@ -4,11 +4,12 @@ const url = require('url');
 const https = require('https');
 const querystring = require('querystring')
 
-const slackChannel = process.env.slackChannel;
 const hookUrl = process.env.hookUrl;
+const authorization = process.env.authorization;
 const translateUrl = process.env.translateUrl;
 const target = process.env.target;
 const key = process.env.key;
+const langNeedTranslated = ['ja', 'ko', 'vi'];
 
 function translate(message, callback) {
     const data = {
@@ -51,6 +52,7 @@ function postMessage(message, callback) {
     options.headers = {
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(body),
+        'Authorization': authorization
     };
 
     const postReq = https.request(options, (res) => {
@@ -73,7 +75,7 @@ function postMessage(message, callback) {
     postReq.end();
 }
 
-function sendSlack(message, callback) {
+function sendSlack(channel, message, thread_ts, callback) {
 
     const done = (err, res) => callback(null, {
         statusCode: err ? '400' : '200',
@@ -83,18 +85,16 @@ function sendSlack(message, callback) {
         },
     });
 
-    // const message = JSON.stringify(input.event.type);
     const slackMessage = {
-        channel: slackChannel,
+        channel: channel,
         text: message,
+        thread_ts: thread_ts
     };
-    console.info(message);
 
     postMessage(slackMessage, (response) => {
         if (response.statusCode < 400) {
             console.info('Message posted successfully');
             done(null, {message: slackMessage});
-            // done(null, {message: 'success'});
         } else if (response.statusCode < 500) {
             console.error(`Error posting message to Slack API: ${response.statusCode} - ${response.statusMessage}`);
             done(`Error posting message to Slack API: ${response.statusCode} - ${response.statusMessage}`);
@@ -117,14 +117,34 @@ function processEvent(event, callback) {
         },
     });
 
-    if (input.event !== undefined && input.event.type === 'message' && input.event.thread_ts === undefined) {
-        translate(input.event.text, (response) => {
+    if (input.event !== undefined && input.event.type === 'message' && input.event.thread_ts === undefined && input.event.attachments !== undefined) {
+
+        const fields = input.event.attachments[0].fields;
+
+        const lang = fields.find(function (element) {
+            if (element.title === 'lang') {
+                return element
+            }
+        });
+
+        if (!langNeedTranslated.includes(lang.value)) {
+            done(null, {status: 'success'});
+            return false;
+        }
+
+        const comment = fields.find(function (element) {
+            if (element.title === 'comment') {
+                return element;
+            }
+        });
+
+        translate(comment.value, (response) => {
             if (response.statusCode !== 200) {
                 console.info(response);
                 return false;
             }
             const body = JSON.parse(response.body);
-            sendSlack(body.data.translations[0].translatedText, callback);
+            sendSlack(input.event.channel, body.data.translations[0].translatedText, input.event.event_ts, callback);
         });
     } else {
         done(null, {status: 'success'});
