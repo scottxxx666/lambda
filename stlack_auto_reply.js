@@ -11,6 +11,27 @@ const target = process.env.target;
 const key = process.env.key;
 const langNeedTranslated = ['ja', 'ko', 'vi'];
 
+function post(options, body, callback) {
+    const postReq = https.request(options, (res) => {
+        const chunks = [];
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.on('end', () => {
+            if (callback) {
+                callback({
+                    body: chunks.join(''),
+                    statusCode: res.statusCode,
+                    statusMessage: res.statusMessage,
+                });
+            }
+        });
+        return res;
+    });
+
+    postReq.write(body);
+    postReq.end();
+}
+
 function translate(message, callback) {
     const data = {
         target: target,
@@ -25,24 +46,7 @@ function translate(message, callback) {
         'Content-Length': Buffer.byteLength(body),
     };
 
-    const postReq = https.request(options, (res) => {
-        const chunks = [];
-        res.setEncoding('utf8');
-        res.on('data', (chunk) => chunks.push(chunk));
-        res.on('end', () => {
-            if (callback) {
-                callback({
-                    body: chunks.join(''),
-                    statusCode: res.statusCode,
-                    statusMessage: res.statusMessage,
-                });
-            }
-        });
-        return res;
-    });
-
-    postReq.write(body);
-    postReq.end();
+    post(options, body, callback);
 }
 
 function postMessage(message, callback) {
@@ -55,36 +59,10 @@ function postMessage(message, callback) {
         'Authorization': authorization
     };
 
-    const postReq = https.request(options, (res) => {
-        const chunks = [];
-        res.setEncoding('utf8');
-        res.on('data', (chunk) => chunks.push(chunk));
-        res.on('end', () => {
-            if (callback) {
-                callback({
-                    body: chunks.join(''),
-                    statusCode: res.statusCode,
-                    statusMessage: res.statusMessage,
-                });
-            }
-        });
-        return res;
-    });
-
-    postReq.write(body);
-    postReq.end();
+    post(options, body, callback);
 }
 
 function sendSlack(channel, message, thread_ts, callback) {
-
-    const done = (err, res) => callback(null, {
-        statusCode: err ? '400' : '200',
-        body: err ? err.message : JSON.stringify(res),
-        headers: {
-            'Content-Type': 'application/json',
-        },
-    });
-
     const slackMessage = {
         channel: channel,
         text: message,
@@ -94,62 +72,75 @@ function sendSlack(channel, message, thread_ts, callback) {
     postMessage(slackMessage, (response) => {
         if (response.statusCode < 400) {
             console.info('Message posted successfully');
-            done(null, {message: slackMessage});
+            done(null, {message: slackMessage}, callback);
         } else if (response.statusCode < 500) {
             console.error(`Error posting message to Slack API: ${response.statusCode} - ${response.statusMessage}`);
-            done(`Error posting message to Slack API: ${response.statusCode} - ${response.statusMessage}`);
+            done(`Error posting message to Slack API: ${response.statusCode} - ${response.statusMessage}`, callback);
             // callback(null);  // Don't retry because the error is due to a problem with the request
         } else {
             // Let Lambda retry
             // callback(`Server error when processing message: ${response.statusCode} - ${response.statusMessage}`);
-            done(`Server error when processing message: ${response.statusCode} - ${response.statusMessage}`);
+            done(`Server error when processing message: ${response.statusCode} - ${response.statusMessage}`, callback);
         }
     });
 }
 
-function processEvent(event, callback) {
-    const input = retrieveInput(event);
-    const done = (err, res) => callback(null, {
+function noNeedTranslate(input) {
+    return input.event === undefined
+        || input.event.type !== 'message'
+        || input.event.thread_ts !== undefined
+        || input.event.attachments === undefined
+        || langNoNeedTranslate(input);
+}
+
+function parseLangField(input) {
+    return input.event.attachments[0].fields.find(function (element) {
+        if (element.title === 'lang') {
+            return element
+        }
+    });
+}
+
+function parseCommentField(input) {
+    return input.event.attachments[0].fields.find(function (element) {
+        if (element.title === 'comment') {
+            return element
+        }
+    });
+}
+
+function langNoNeedTranslate(input) {
+    return parseLangField(input) && !langNeedTranslated.includes(parseLangField(input).value);
+}
+
+function done(err, res, callback) {
+    return callback(null, {
         statusCode: err ? '400' : '200',
         body: err ? err.message : JSON.stringify(res),
         headers: {
             'Content-Type': 'application/json',
         },
     });
+}
 
-    if (input.event !== undefined && input.event.type === 'message' && input.event.thread_ts === undefined && input.event.attachments !== undefined) {
+function processEvent(event, callback) {
+    const input = retrieveInput(event);
 
-        const fields = input.event.attachments[0].fields;
-
-        const lang = fields.find(function (element) {
-            if (element.title === 'lang') {
-                return element
-            }
-        });
-
-        if (!langNeedTranslated.includes(lang.value)) {
-            done(null, {status: 'success'});
-            return false;
-        }
-
-        const comment = fields.find(function (element) {
-            if (element.title === 'comment') {
-                return element;
-            }
-        });
-
-        translate(comment.value, (response) => {
-            if (response.statusCode !== 200) {
-                console.info(response);
-                return false;
-            }
-            const body = JSON.parse(response.body);
-            sendSlack(input.event.channel, body.data.translations[0].translatedText, input.event.event_ts, callback);
-        });
-    } else {
-        done(null, {status: 'success'});
+    if (noNeedTranslate(input)) {
+        done(null, {status: 'success'}, callback);
         return false;
     }
+
+    const comment = parseCommentField(input);
+
+    translate(comment.value, (response) => {
+        if (response.statusCode !== 200) {
+            console.info(response);
+            return false;
+        }
+        const body = JSON.parse(response.body);
+        sendSlack(input.event.channel, body.data.translations[0].translatedText, input.event.event_ts, callback);
+    });
 }
 
 function retrieveInput(event) {
