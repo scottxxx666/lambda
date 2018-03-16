@@ -9,7 +9,7 @@ const authorization = process.env.authorization;
 const translateUrl = process.env.translateUrl;
 const target = process.env.target;
 const key = process.env.key;
-const langNeedTranslated = ['ja', 'ko', 'vi'];
+const langNeedTranslated = ['ja', 'ko', 'vi', 'th'];
 
 function post(options, body, callback) {
     const postReq = https.request(options, (res) => {
@@ -33,6 +33,7 @@ function post(options, body, callback) {
 }
 
 function translate(message, callback) {
+    console.info('Start translate');
     const data = {
         target: target,
         q: message,
@@ -50,6 +51,7 @@ function translate(message, callback) {
 }
 
 function postMessage(message, callback) {
+    console.info('Start post message');
     const body = JSON.stringify(message);
     const options = url.parse(hookUrl);
     options.method = 'POST';
