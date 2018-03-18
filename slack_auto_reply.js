@@ -7,7 +7,9 @@ const querystring = require('querystring')
 const hookUrl = process.env.hookUrl;
 const authorization = process.env.authorization;
 const translateUrl = process.env.translateUrl;
+const youdaoTranslateUrl = process.env.youdaoTranslateUrl;
 const target = process.env.target;
+const to = process.env.to;
 const key = process.env.key;
 const langNeedTranslated = ['ja', 'ko', 'vi', 'th'];
 
@@ -32,8 +34,8 @@ function post(options, body, callback) {
     postReq.end();
 }
 
-function translate(message, callback) {
-    console.info('Start translate');
+function googleTranslate(message, callback) {
+    console.info('Start Google translate');
     const data = {
         target: target,
         q: message,
@@ -41,6 +43,23 @@ function translate(message, callback) {
     };
     const body = querystring.stringify(data);
     const options = url.parse(translateUrl);
+    options.method = 'POST';
+    options.headers = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(body),
+    };
+
+    post(options, body, callback);
+}
+
+function youdaoTranslate(message, callback) {
+    console.info('Start Youdao translate');
+    const data = {
+        q: message,
+        to: to
+    };
+    const body = querystring.stringify(data);
+    const options = url.parse(youdaoTranslateUrl);
     options.method = 'POST';
     options.headers = {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -135,13 +154,24 @@ function processEvent(event, callback) {
 
     const comment = parseCommentField(input);
 
-    translate(comment.value, (response) => {
+    googleTranslate(comment.value, (response) => {
         if (response.statusCode !== 200) {
             console.info(response);
             return false;
         }
         const body = JSON.parse(response.body);
+        console.info('Google translate completed');
         sendSlack(input.event.channel, body.data.translations[0].translatedText, input.event.event_ts, callback);
+    });
+
+    youdaoTranslate(comment.value, (response) => {
+        if (response.statusCode !== 200) {
+            console.info(response);
+            return false;
+        }
+        const body = JSON.parse(response.body);
+        console.info('Youdao translate completed');
+        sendSlack(input.event.channel, body.translation[0], input.event.event_ts, callback);
     });
 }
 
