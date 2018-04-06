@@ -61,7 +61,6 @@ function processEvent(event, callback) {
     };
     var params = {
         Message: JSON.stringify(message),
-        Subject: "Test SNS From Lambda",
         TopicArn: topic
     };
     sns.publish(params, response => {
