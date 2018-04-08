@@ -92,14 +92,13 @@ function sendSlack(channel, message, thread_ts, callback) {
     postMessage(slackMessage, (response) => {
         if (response.statusCode < 400) {
             console.info('Message posted successfully');
-            callback(null);
         } else if (response.statusCode < 500) {
             console.error(`Error posting message to Slack API: ${response.statusCode} - ${response.statusMessage}`);
         } else {
             console.error(`Server error when processing message: ${response.statusCode} - ${response.statusMessage}`);
-            callback(null);
         }
     });
+    callback(null);
 }
 
 function processEvent(messageString, callback) {
@@ -107,25 +106,41 @@ function processEvent(messageString, callback) {
     const input = message.input;
     const comment = message.comment;
 
-    googleTranslate(comment, (response) => {
-        if (response.statusCode !== 200) {
+    try {
+        googleTranslate(comment, (response) => {
+            if (response.statusCode !== 200) {
+                console.info(response);
+                return false;
+            }
+            const body = JSON.parse(response.body);
+            console.info('Google translate completed');
             console.info(response);
-            return false;
-        }
-        const body = JSON.parse(response.body);
-        console.info('Google translate completed');
-        sendSlack(input.event.channel, body.data.translations[0].translatedText, input.event.event_ts, callback);
-    });
+            sendSlack(input.event.channel, body.data.translations[0].translatedText, input.event.event_ts, callback);
+        });
+    }
+    catch(err) {
+        console.error('Google translate error');
+        console.error(err);
+        callback(null);
+    }
 
-    youdaoTranslate(comment, (response) => {
-        if (response.statusCode !== 200) {
+    try {
+        youdaoTranslate(comment, (response) => {
+            if (response.statusCode !== 200) {
+                console.info(response);
+                return false;
+            }
+            const body = JSON.parse(response.body);
+            console.info('Youdao translate completed');
             console.info(response);
-            return false;
-        }
-        const body = JSON.parse(response.body);
-        console.info('Youdao translate completed');
-        sendSlack(input.event.channel, body.translation[0], input.event.event_ts, callback);
-    });
+            sendSlack(input.event.channel, body.translation[0], input.event.event_ts, callback);
+        });
+    }
+    catch(err) {
+        console.error('Youdao translate error');
+        console.error(err);
+        callback(null);
+    }
 }
 
 exports.handler = (event, context, callback) => {

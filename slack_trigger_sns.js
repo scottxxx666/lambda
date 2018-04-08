@@ -45,7 +45,6 @@ function done(err, res, callback) {
 
 function processEvent(event, callback) {
     const input = retrieveInput(event);
-    console.info(input);
 
     if (noNeedTranslate(input)) {
         done(null, {status: 'success'}, callback);
@@ -80,5 +79,6 @@ function retrieveInput(event) {
 
 
 exports.handler = (event, context, callback) => {
+    console.info(event);
     processEvent(event, callback);
 };
