@@ -6,11 +6,8 @@ const querystring = require('querystring')
 
 const hookUrl = process.env.hookUrl;
 const authorization = process.env.authorization;
-const translateUrl = process.env.translateUrl;
 const youdaoTranslateUrl = process.env.youdaoTranslateUrl;
-const target = process.env.target;
 const to = process.env.to;
-const key = process.env.key;
 
 function post(options, body, callback) {
     const postReq = https.request(options, (res) => {
@@ -31,24 +28,6 @@ function post(options, body, callback) {
 
     postReq.write(body);
     postReq.end();
-}
-
-function googleTranslate(message, callback) {
-    console.info('Start Google translate');
-    const data = {
-        target: target,
-        q: message,
-        key: key
-    };
-    const body = querystring.stringify(data);
-    const options = url.parse(translateUrl);
-    options.method = 'POST';
-    options.headers = {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Content-Length': Buffer.byteLength(body),
-    };
-
-    post(options, body, callback);
 }
 
 function youdaoTranslate(message, callback) {
@@ -105,24 +84,6 @@ function processEvent(messageString, callback) {
     const message = JSON.parse(messageString);
     const input = message.input;
     const comment = message.comment;
-
-    try {
-        googleTranslate(comment, (response) => {
-            if (response.statusCode !== 200) {
-                console.info(response);
-                return false;
-            }
-            const body = JSON.parse(response.body);
-            console.info('Google translate completed');
-            console.info(response);
-            sendSlack(input.event.channel, body.data.translations[0].translatedText, input.event.event_ts, callback);
-        });
-    }
-    catch(err) {
-        console.error('Google translate error');
-        console.error(err);
-        callback(null);
-    }
 
     try {
         youdaoTranslate(comment, (response) => {
